@@ -1,0 +1,41 @@
+### Crear categoría
+POST http://localhost:8000/api/products/categories/
+Content-Type: application/json
+
+{
+  "name": "Electrónica",
+  "description": "Tecnología y gadgets"
+}
+
+### Listar categorías
+GET http://localhost:8000/api/products/categories/
+
+### Crear producto
+POST http://localhost:8000/api/products/products/
+Content-Type: application/json
+
+{
+  "name": "Laptop Gamer",
+  "description": "RTX 4060 y 32GB RAM",
+  "price": 1500.00,
+  "stock": 5,
+  "category": 1
+}
+
+### Listar productos
+GET http://localhost:8000/api/products/products/
+
+### Actualizar producto
+PUT http://localhost:8000/api/products/products/1/
+Content-Type: application/json
+
+{
+  "name": "Laptop Pro",
+  "description": "Edición 2025",
+  "price": 1600.00,
+  "stock": 3,
+  "category": 1
+}
+
+### Eliminar producto
+DELETE http://localhost:8000/api/products/products/1/
