@@ -21,9 +21,13 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ProductListSerializer(serializers.ModelSerializer):
+    category = serializers.SlugRelatedField(
+        slug_field="slug", queryset=Category.objects.all()
+    )
+
     class Meta:
         model = Product
-        fields = ["id", "name", "slug", "price", "stock"]
+        fields = ["id", "name", "slug", "price", "stock", "category"]
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):

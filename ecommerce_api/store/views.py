@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAdminUser
 from django.db.models import F
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Product, Category # Asegúrate de que Order, OrderItem también estén importados si ya los añadiste
+from .models import Product, Category
 from .serializers import (
     ProductListSerializer,
     ProductDetailSerializer,
@@ -18,8 +18,9 @@ from .serializers import (
 # Configurar el logger
 logger = logging.getLogger(__name__)
 
-# Tiempo de expiración para la caché (en segundos), puedes ponerlo en settings.py
-CACHE_TTL = getattr(settings, 'CACHE_TTL', 60 * 5) # 5 minutos por defecto
+
+CACHE_TTL = getattr(settings, 'CACHE_TTL', 60 * 5)  # 5 minutos por defecto
+
 
 # --- Mixin para Lógica de Caching Reutilizable ---
 class CachingMixin:
@@ -27,7 +28,7 @@ class CachingMixin:
     Un mixin para ViewSets que añade lógica de caching para métodos list y retrieve,
     y manejo de invalidación en operaciones CUD.
     """
-    cache_base_key = None # Debe ser definido por la subclase (ej. 'products', 'categories')
+    cache_base_key = None  # Debe ser definido por la subclase (ej. 'products', 'categories')
 
     def get_cache_key_list(self, request):
         """Genera la clave para la lista de recursos."""
@@ -42,20 +43,26 @@ class CachingMixin:
         cached_data = cache.get(cache_key)
 
         if cached_data:
-            logger.debug(f"Cache HIT: Obteniendo lista de {self.cache_base_key} desde caché con clave: {cache_key}")
+            logger.debug(
+                f"Cache HIT: Obteniendo lista de {self.cache_base_key} desde caché con clave: {cache_key}")
             return Response(cached_data)
 
         response = super().list(request, *args, **kwargs)
         try:
             cache.set(cache_key, response.data, timeout=CACHE_TTL)
-            logger.debug(f"Cache MISS: Obteniendo lista de {self.cache_base_key} desde DB y guardando en caché con clave: {cache_key}")
+            logger.debug(
+                f"Cache MISS: Obteniendo lista de {self.cache_base_key} desde DB y guardando en caché con clave: {cache_key}")
         except Exception as e:
-            logger.error(f"Error al guardar lista de {self.cache_base_key} en caché ({cache_key}): {e}")
-        return response
+            logger.error(
+                f"Error al guardar lista de {self.cache_base_key} en caché ({cache_key}): {e}")
+        return Response(response.data)
 
     def retrieve(self, request, *args, **kwargs):
         instance_id = self.kwargs[self.lookup_field]
-        cache_key = self.get_cache_key_detail(instance_id)
+        if self.cache_base_key == 'categories':
+            cache_key = f"category_detail:{instance_id}"
+        else:
+            cache_key = f"product_detail:{instance_id}"
         cached_data = cache.get(cache_key)
 
         if cached_data:
@@ -65,14 +72,17 @@ class CachingMixin:
         response = super().retrieve(request, *args, **kwargs)
         try:
             cache.set(cache_key, response.data, timeout=CACHE_TTL)
-            logger.debug(f"Cache MISS: Obteniendo detalle de {self.cache_base_key} {instance_id} desde DB y guardando en caché.")
+            logger.debug(
+                f"Cache MISS: Obteniendo detalle de {self.cache_base_key} {instance_id} desde DB y guardando en caché.")
         except Exception as e:
-            logger.error(f"Error al guardar detalle de {self.cache_base_key} {instance_id} en caché ({cache_key}): {e}")
-        return response
+            logger.error(
+                f"Error al guardar detalle de {self.cache_base_key} {instance_id} en caché ({cache_key}): {e}")
+        return Response(response.data)
 
     def _invalidate_related_caches(self, instance_id=None):
         """Método auxiliar para invalidar cachés relacionadas."""
-        logger.debug(f"Invalidando cachés relacionadas para {self.cache_base_key} (ID: {instance_id if instance_id else 'N/A'}).")
+        logger.debug(
+            f"Invalidando cachés relacionadas para {self.cache_base_key} (ID: {instance_id if instance_id else 'N/A'}).")
         cache.delete_pattern(f"{self.cache_base_key}_list:*")
         if instance_id:
             cache.delete(self.get_cache_key_detail(instance_id))
@@ -83,7 +93,7 @@ class CachingMixin:
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
-        self._invalidate_related_caches() # No necesitamos ID específico al crear, solo la lista
+        self._invalidate_related_caches()
 
     def perform_update(self, serializer):
         super().perform_update(serializer)
@@ -120,7 +130,7 @@ class CategoryViewSet(CachingMixin, AdminOrReadOnlyViewSet):
     """
     queryset = Category.objects.filter(is_active=True)
     serializer_class = CategorySerializer
-    cache_base_key = 'categories' # Define la clave base para este ViewSet
+    cache_base_key = 'categories'  # Define la clave base para este ViewSet
 
 
 # --- Product ViewSet con Caching ---
@@ -136,7 +146,7 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
     search_fields = ['name', 'description', 'sku']
     ordering_fields = ['price', 'stock']
     ordering = ['-id']
-    cache_base_key = 'products' # Define la clave base para este ViewSet
+    cache_base_key = 'products'  # Define la clave base para este ViewSet
 
     def get_serializer_class(self):
         """
@@ -148,14 +158,14 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
 
     # Sobreescribe el método de invalidación del mixin si necesitas invalidaciones específicas
     def _invalidate_related_caches(self, instance_id=None):
-        super()._invalidate_related_caches(instance_id) # Llama al método del mixin primero
+        super()._invalidate_related_caches(instance_id)  # Llama al método del mixin primero
         logger.debug("Invalidando cachés específicas de productos (featured, discounted).")
-        cache.delete("product_featured") # Usar delete para claves exactas
+        cache.delete("product_featured")  # Usar delete para claves exactas
         cache.delete("product_discounted")
 
     @action(detail=False, methods=['get'])
     def featured(self, request):
-        cache_key = "product_featured" # Clave fija para todos los destacados
+        cache_key = "product_featured"  # Clave fija para todos los destacados
         cached_data = cache.get(cache_key)
 
         if cached_data:
@@ -173,7 +183,7 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
 
     @action(detail=False, methods=['get'])
     def discounted(self, request):
-        cache_key = "product_discounted" # Clave fija para todos los descontados
+        cache_key = "product_discounted"  # Clave fija para todos los descontados
         cached_data = cache.get(cache_key)
 
         if cached_data:
@@ -189,5 +199,6 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
             cache.set(cache_key, serializer.data, timeout=CACHE_TTL)
             logger.debug("Cache MISS: Obteniendo productos con descuento desde DB y guardando en caché.")
         except Exception as e:
-            logger.error(f"Error al guardar productos con descuento en caché ({cache_key}): {e}")
+            logger.error(
+                f"Error al guardar productos con descuento en caché ({cache_key}): {e}")
         return Response(serializer.data)
