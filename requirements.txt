@@ -1,0 +1,11 @@
+# Python 3.13.5
+
+asgiref==3.8.1
+Django==5.2.3
+django-filter==25.1
+django-redis==6.0.0
+djangorestframework==3.16.0
+Markdown==3.8.2
+redis==6.2.0
+sqlparse==0.5.3
+tzdata==2025.2
