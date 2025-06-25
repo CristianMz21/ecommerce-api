@@ -79,7 +79,7 @@ WSGI_APPLICATION = 'ecommerce_api.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': BASE_DIR / 'test_db.sqlite3',
     }
 }
 
@@ -128,26 +128,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CACHES = {
     "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        # Si Redis está corriendo directamente en tu máquina local:
-        "LOCATION": "redis://127.0.0.1:6379/1",
-        # Si estás usando Docker Compose (que veremos en el Módulo 4)
-        # y tu servicio Redis se llama 'redis', sería:
-        # "LOCATION": "redis://redis:6379/1",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            # Permite que tu aplicación siga funcionando si Redis no está disponible.
-            # Útil para entornos de desarrollo. En producción, podrías querer un manejo de errores más estricto.
-            "IGNORE_EXCEPTIONS": True,
-        }
-    },
-    # Puedes definir múltiples cachés si lo necesitas
-    "session_cache": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/2", # Usa otra base de datos de Redis si quieres separar caches
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-        }
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
     }
 }
 
@@ -165,6 +147,9 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly'
+    ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend'
     ]
 }
 
