@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, cast
 
 from django.core.cache import cache
@@ -21,6 +22,7 @@ from store.serializers import (
     ProductDetailSerializer,
     ProductListSerializer,
 )
+from store.services import ReportFilters, ReportsService
 
 logger = __import__("logging").getLogger(__name__)
 
@@ -59,7 +61,8 @@ class AdminOrReadOnlyViewSet(viewsets.ModelViewSet[Any]):
     def get_permissions(self) -> list[BasePermission]:
         if self.action in ["create", "update", "destroy", "partial_update"]:
             return [IsAdminUser()]
-        return cast(list[BasePermission], super().get_permissions())
+        raw = super().get_permissions()
+        return cast(list[BasePermission], list(raw))
 
 
 class CategoryViewSet(CachingMixin, AdminOrReadOnlyViewSet):
@@ -257,22 +260,52 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
 
     @action(detail=False, methods=["get"], permission_classes=[IsAdminUser])
     def reports(self, request: Request) -> Response:
-        from store.services import ReportsService
-
         report_type = request.query_params.get("type", "sales_by_category")
-        limit = int(request.query_params.get("limit", 10))
+        filters = self._parse_report_filters(request)
         service = ReportsService()
         if report_type == "sales_by_category":
-            results = service.get_sales_by_category(limit)
-            return Response(results)
+            return Response(service.get_sales_by_category(filters))
         elif report_type == "profit_margin":
-            products = service.get_profit_margin(limit)
-            serializer = self.get_serializer(products, many=True)
-            return Response(serializer.data)
+            return Response(service.get_profit_margin(filters))
         elif report_type == "combined":
-            categories = service.get_combined(limit)
-            serializer = CategorySerializer(categories, many=True)
-            return Response(serializer.data)
+            return Response(service.get_combined(filters))
         return Response(
             {"error": "Invalid report type"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def _parse_report_filters(self, request: Request) -> ReportFilters:
+        """Parse query params into ReportFilters dataclass."""
+        limit_str = request.query_params.get("limit", "10")
+        try:
+            limit = int(limit_str)
+        except ValueError:
+            raise ValidationError("limit must be a valid integer")
+        start_date: datetime | None = None
+        end_date: datetime | None = None
+        start_date_str = request.query_params.get("start_date")
+        end_date_str = request.query_params.get("end_date")
+        if start_date_str:
+            try:
+                start_date = datetime.fromisoformat(start_date_str)
+            except ValueError:
+                raise ValidationError(
+                    "start_date must be valid ISO format (YYYY-MM-DD)"
+                )
+        if end_date_str:
+            try:
+                end_date = datetime.fromisoformat(end_date_str)
+            except ValueError:
+                raise ValidationError("end_date must be valid ISO format (YYYY-MM-DD)")
+        category_id_str = request.query_params.get("category_id")
+        category_id: int | None = None
+        if category_id_str:
+            try:
+                category_id = int(category_id_str)
+            except ValueError:
+                raise ValidationError("category_id must be a valid integer")
+        return ReportFilters(
+            limit=limit,
+            start_date=start_date,
+            end_date=end_date,
+            category_id=category_id,
         )

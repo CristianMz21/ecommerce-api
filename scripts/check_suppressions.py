@@ -43,18 +43,18 @@ PYTHON_SUPPRESSION_PATTERNS = [
 ]
 
 TOML_SUPPRESSION_PATTERNS = [
-    (r'extend-ignore\s*=', "extend-ignore (ruff suppression)"),
-    (r'extend-select\s*=\s*\[\s*\]', "extend-select with empty array"),
-    (r'per-file-ignores\s*=', "per-file-ignores (suppression)"),
-    (r'strict\s*=\s*false', "strict = false (mypy suppression)"),
-    (r'strict\s*=\s*0', "strict = 0 (mypy suppression)"),
-    (r'ignore_missing_imports\s*=\s*true', "ignore_missing_imports = true"),
-    (r'ignore_missing_imports\s*=\s*1', "ignore_missing_imports = 1"),
-    (r'allowlist_descriptions', "allowlist_descriptions"),
-    (r'disable_error_code', "disable_error_code"),
-    (r'exclude\s*=\s*\[', "exclude array in ruff config"),
-    (r'fail_on\:\s*none', "fail_on: none (suppression)"),
-    (r'ignore\s*=\s*\[', "ignore array (suppression)"),
+    (r"extend-ignore\s*=", "extend-ignore (ruff suppression)"),
+    (r"extend-select\s*=\s*\[\s*\]", "extend-select with empty array"),
+    (r"per-file-ignores\s*=", "per-file-ignores (suppression)"),
+    (r"strict\s*=\s*false", "strict = false (mypy suppression)"),
+    (r"strict\s*=\s*0", "strict = 0 (mypy suppression)"),
+    (r"ignore_missing_imports\s*=\s*true", "ignore_missing_imports = true"),
+    (r"ignore_missing_imports\s*=\s*1", "ignore_missing_imports = 1"),
+    (r"allowlist_descriptions", "allowlist_descriptions"),
+    (r"disable_error_code", "disable_error_code"),
+    (r"exclude\s*=\s*\[", "exclude array in ruff config"),
+    (r"fail_on\:\s*none", "fail_on: none (suppression)"),
+    (r"ignore\s*=\s*\[", "ignore array (suppression)"),
 ]
 
 IGNORED_PATHS = [
