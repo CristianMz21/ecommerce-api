@@ -113,13 +113,13 @@ class ReportsService:
         for product in products:
             total_rev = float(product.total_revenue or 0)
             total_sold = float(product.total_sold or 0)
-            if total_rev == 0:
+            price_val = float(product.price)
+            if total_rev == 0 or price_val == 0:
                 profit_margin = 0.0
+                cost_price = 0.0
             else:
-                cost_price = float(product.price) * 0.7
-                profit_margin = (
-                    (float(product.price) - cost_price) / float(product.price)
-                ) * 100.0
+                cost_price = price_val * 0.7
+                profit_margin = ((price_val - cost_price) / price_val) * 100.0
             results.append(
                 {
                     "id": product.id,
@@ -127,7 +127,7 @@ class ReportsService:
                     "price": product.price,
                     "total_sold": total_sold,
                     "total_revenue": total_rev,
-                    "cost_price": float(product.price) * 0.7,
+                    "cost_price": cost_price,
                     "profit_margin": profit_margin,
                 }
             )
