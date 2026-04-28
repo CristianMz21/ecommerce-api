@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any
 
 from django.db import models
 from django.utils.text import slugify
@@ -105,9 +105,11 @@ class Order(models.Model):
 
     def clean(self) -> None:
         from django.core.exceptions import ValidationError
+        from django.db.models.fields import CharField
 
-        status_field = cast(Any, self._meta.get_field("status"))
-        assert isinstance(status_field.choices, list)
+        status_field = self._meta.get_field("status")
+        assert isinstance(status_field, CharField)
+        assert status_field.choices is not None
         valid_statuses = {item[0] for item in status_field.choices}
         if self.status not in valid_statuses:
             raise ValidationError("Invalid order status")
