@@ -8,7 +8,7 @@ from store.models import Category, Product
 class ReportsService:
     """Business logic for analytics reports."""
 
-    def get_sales_by_category(self, limit: int) -> list[dict]:
+    def get_sales_by_category(self, limit: int) -> list[dict[str, float]]:
         """
         Sales totals and revenue per category.
         Returns list of dicts with keys: category, total_sold, total_revenue.

@@ -52,6 +52,7 @@ line-ending = "auto"
 [tool.mypy]
 python_version = "3.14"
 plugins = ["mypy_django_plugin.main"]
+strict = true
 files = ["store/", "ecommerce_api/"]
 cache_dir = ".mypy_cache"
 
