@@ -1,0 +1,68 @@
+[project]
+name = "ecommerce-api"
+version = "1.0.0"
+description = "Production-grade e-commerce backend built with Django 6.0.4 and DRF 3.17.1"
+requires-python = ">=3.14"
+dependencies = [
+    "Django==6.0.4",
+    "djangorestframework==3.17.1",
+    "django-filter==25.2",
+    "django-redis==6.0.0",
+    "redis==7.4.0",
+    "Markdown==3.10.2",
+    "asgiref==3.11.1",
+    "sqlparse==0.5.5",
+    "tzdata==2026.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.15.0",
+    "mypy>=1.20.0",
+    "django-stubs>=6.0.0",
+    "djangorestframework-stubs>=3.16.0",
+    "types-django-filter>=25.2.0",
+    "pre-commit>=4.0.0",
+    "pip-audit>=2.0.0",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+cache-dir = ".ruff_cache"
+
+[tool.ruff.lint]
+extend-select = [
+    "E",
+    "F",
+    "I",
+    "N",
+    "W",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["store", "ecommerce_api"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.14"
+plugins = ["mypy_django_plugin.main"]
+files = ["store/", "ecommerce_api/"]
+cache_dir = ".mypy_cache"
+
+[tool.django-stubs]
+django_settings_module = "ecommerce_api.settings"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "ecommerce_api.settings"
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --tb=short"
+testpaths = ["store"]
+
+[tool.pip-audit]
+dist-file = "requirements.txt"

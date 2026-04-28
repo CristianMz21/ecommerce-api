@@ -1,6 +1,7 @@
-from rest_framework import serializers
 from django.utils.text import slugify
-from .models import Product, Category
+from rest_framework import serializers
+
+from .models import Category, Product
 
 
 class CategorySerializer(serializers.ModelSerializer):

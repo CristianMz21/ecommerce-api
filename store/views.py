@@ -1,19 +1,20 @@
 import logging
-from django.core.cache import cache
+
 from django.conf import settings
-from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAdminUser
+from django.core.cache import cache
 from django.db.models import F
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAdminUser, IsAuthenticatedOrReadOnly
+from rest_framework.response import Response
 
-from .models import Product, Category
+from .models import Category, Product
 from .serializers import (
-    ProductListSerializer,
-    ProductDetailSerializer,
     CategorySerializer,
+    ProductDetailSerializer,
+    ProductListSerializer,
 )
 
 # Configurar el logger
@@ -26,17 +27,15 @@ CACHE_TTL = getattr(settings, "CACHE_TTL", 60 * 5)  # 5 minutos por defecto
 # --- Mixin para Lógica de Caching Reutilizable ---
 class CachingMixin:
     """
-    Mixin reutilizable para ViewSets que añade lógica de caching para los métodos list y retrieve,
-    e invalidación automática de caché en operaciones de creación, actualización y borrado (CUD).
+    Mixin para ViewSets que añade lógica de caching para list y retrieve,
+    e invalidación automática en operaciones CUD.
 
-    - Cachea respuestas de list y retrieve si no hay parámetros de búsqueda/ordenamiento.
-    - Invalida la caché relevante tras operaciones CUD.
-    - Permite a subclases definir la clave base de caché (cache_base_key).
-    - Gestiona claves de caché para invalidación eficiente.
-    - Incluye manejo especial para productos destacados y con descuento.
+    - Cachea respuestas si no hay búsqueda/ordenamiento.
+    - Invalida la caché tras operaciones CUD.
+    - Permite definir clave base de caché.
     """
 
-    cache_base_key = (
+    cache_base_key: str | None = (
         None  # Debe ser definido por la subclase (ej. 'products', 'categories')
     )
 
@@ -63,30 +62,21 @@ class CachingMixin:
         return f"{self.cache_base_key}_detail:{instance_id}"
 
     def list(self, request, *args, **kwargs):
-        """
-        Devuelve la lista de objetos, usando caché si no hay parámetros de búsqueda/ordenamiento.
-        """
+        """Lista objetos usando caché si no hay parámetros de búsqueda."""
         cache_key = self.get_cache_key_list(request)
 
-        # If cache_key is None, it means we have search/filter parameters
-        # so we should bypass cache and go directly to the database
         if cache_key is None:
-            logger.debug(
-                f"Bypassing cache for {self.cache_base_key} list due to search/filter parameters"
-            )
+            logger.debug(f"Bypassing cache for {self.cache_base_key} list")
             return super().list(request, *args, **kwargs)
 
         cached_data = cache.get(cache_key)
 
         if cached_data:
-            logger.debug(
-                f"Cache HIT: Obteniendo lista de {self.cache_base_key} desde caché con clave: {cache_key}"
-            )
+            logger.debug(f"Cache HIT: {self.cache_base_key} list")
             return Response(cached_data)
 
         response = super().list(request, *args, **kwargs)
 
-        # Only cache if response.data is not None
         if response.data is not None:
             try:
                 cache.set(cache_key, response.data, timeout=CACHE_TTL)
@@ -96,17 +86,11 @@ class CachingMixin:
                     cache.set(
                         f"{self.cache_base_key}_list_keys", cache_keys, timeout=None
                     )
-                logger.debug(
-                    f"Cache MISS: Obteniendo lista de {self.cache_base_key} desde DB y guardando en caché con clave: {cache_key}"
-                )
+                logger.debug(f"Cache MISS: {self.cache_base_key} list")
             except Exception as e:
-                logger.error(
-                    f"Error al guardar lista de {self.cache_base_key} en caché ({cache_key}): {e}"
-                )
+                logger.error(f"Error saving {self.cache_base_key} list to cache: {e}")
         else:
-            logger.warning(
-                f"Response data is None for {self.cache_base_key} list, skipping cache"
-            )
+            logger.warning(f"Response data is None for {self.cache_base_key} list")
 
         return Response(response.data)
 
@@ -122,20 +106,16 @@ class CachingMixin:
         cached_data = cache.get(cache_key)
 
         if cached_data:
-            logger.debug(
-                f"Cache HIT: Obteniendo detalle de {self.cache_base_key} {instance_id} desde caché."
-            )
+            logger.debug(f"Cache HIT: {self.cache_base_key} {instance_id}")
             return Response(cached_data)
 
         response = super().retrieve(request, *args, **kwargs)
         try:
             cache.set(cache_key, response.data, timeout=CACHE_TTL)
-            logger.debug(
-                f"Cache MISS: Obteniendo detalle de {self.cache_base_key} {instance_id} desde DB y guardando en caché."
-            )
+            logger.debug(f"Cache MISS: {self.cache_base_key} {instance_id}")
         except Exception as e:
             logger.error(
-                f"Error al guardar detalle de {self.cache_base_key} {instance_id} en caché ({cache_key}): {e}"
+                f"Error saving {self.cache_base_key} {instance_id} to cache: {e}"
             )
         return Response(response.data)
 
@@ -174,20 +154,15 @@ class CachingMixin:
         self._invalidate_related_caches(serializer.instance.id)
 
     def perform_destroy(self, instance):
-        """
-        Elimina un objeto e invalida la caché de detalle y listas. Previene borrado si hay relaciones dependientes.
-        """
+        """Elimina objeto e invalida caché. Previene si hay OrderItems."""
         instance_id = instance.id
         try:
-            # Verificar si hay relaciones dependientes
             if hasattr(instance, "orderitem_set") and instance.orderitem_set.exists():
-                raise Exception(
-                    f"Cannot delete {instance} because it has related OrderItems"
-                )
+                msg = f"Cannot delete {instance} because it has related OrderItems"
+                raise Exception(msg)
             super().perform_destroy(instance)
         except Exception as e:
             logger.error(f"Error deleting {self.cache_base_key} {instance_id}: {e}")
-            # Return a proper HTTP response instead of raising an exception
             raise ValidationError(str(e))
         self._invalidate_related_caches(instance_id)
 
@@ -221,18 +196,11 @@ class CategoryViewSet(CachingMixin, AdminOrReadOnlyViewSet):
 
     queryset = Category.objects.filter(is_active=True)
     serializer_class = CategorySerializer
-    cache_base_key = "categories"  # Define la clave base para este ViewSet
+    cache_base_key = "categories"
 
 
-# --- Product ViewSet con Caching ---
 class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
-    """
-    Endpoint de API para productos:
-    - Permite ver, buscar, ordenar y editar productos.
-    - Proporciona acciones especiales para productos destacados y con descuento.
-    - Implementa caching para list y retrieve.
-    - Solo administradores pueden crear, actualizar o borrar.
-    """
+    """ViewSet for products with caching, filtering, and custom actions."""
 
     queryset = Product.objects.filter(is_active=True).select_related("category")
     lookup_field = "id"
@@ -245,67 +213,48 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
     search_fields = ["name", "description", "sku"]
     ordering_fields = ["price", "stock"]
     ordering = ["-id"]
-    cache_base_key = "products"  # Define la clave base para este ViewSet
+    cache_base_key = "products"
 
     def get_serializer_class(self):
-        """
-        Devuelve el serializer adecuado según la acción (list o detail).
-        """
+        """Return serializer based on action."""
         if self.action == "list":
             return ProductListSerializer
         return ProductDetailSerializer
 
-    # Sobreescribe el método de invalidación del mixin si necesitas invalidaciones específicas
     def _invalidate_related_caches(self, instance_id=None):
-        """
-        Invalida la caché relacionada a productos, incluyendo destacados y con descuento.
-        """
-        super()._invalidate_related_caches(
-            instance_id
-        )  # Llama al método del mixin primero
-        logger.debug(
-            "Invalidando cachés específicas de productos (featured, discounted)."
-        )
-        cache.delete("product_featured")  # Usar delete para claves exactas
+        """Invalidate product caches including featured and discounted."""
+        super()._invalidate_related_caches(instance_id)
+        logger.debug("Invalidating product caches (featured, discounted).")
+        cache.delete("product_featured")
         cache.delete("product_discounted")
 
     @action(detail=False, methods=["get"])
     def featured(self, request):
-        """
-        Endpoint para obtener productos destacados (is_featured=True).
-        Respuesta cacheada bajo la clave 'product_featured'.
-        """
-        cache_key = "product_featured"  # Clave fija para todos los destacados
+        """Get featured products with caching."""
+        cache_key = "product_featured"
         cached_data = cache.get(cache_key)
 
         if cached_data:
-            logger.debug("Cache HIT: Obteniendo productos destacados desde caché.")
+            logger.debug("Cache HIT: featured products")
             return Response(cached_data)
 
         products = self.get_queryset().filter(is_featured=True)
         serializer = self.get_serializer(products, many=True)
         try:
             cache.set(cache_key, serializer.data, timeout=CACHE_TTL)
-            logger.debug(
-                "Cache MISS: Obteniendo productos destacados desde DB y guardando en caché."
-            )
+            logger.debug("Cache MISS: featured products")
         except Exception as e:
-            logger.error(
-                f"Error al guardar productos destacados en caché ({cache_key}): {e}"
-            )
+            logger.error(f"Error caching featured products: {e}")
         return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
     def discounted(self, request):
-        """
-        Endpoint para obtener productos con descuento (discount_price < price).
-        Respuesta cacheada bajo la clave 'product_discounted'.
-        """
-        cache_key = "product_discounted"  # Clave fija para todos los descontados
+        """Get discounted products with caching."""
+        cache_key = "product_discounted"
         cached_data = cache.get(cache_key)
 
         if cached_data:
-            logger.debug("Cache HIT: Obteniendo productos con descuento desde caché.")
+            logger.debug("Cache HIT: discounted products")
             return Response(cached_data)
 
         products = self.get_queryset().filter(
@@ -314,13 +263,9 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
         serializer = self.get_serializer(products, many=True)
         try:
             cache.set(cache_key, serializer.data, timeout=CACHE_TTL)
-            logger.debug(
-                "Cache MISS: Obteniendo productos con descuento desde DB y guardando en caché."
-            )
+            logger.debug("Cache MISS: discounted products")
         except Exception as e:
-            logger.error(
-                f"Error al guardar productos con descuento en caché ({cache_key}): {e}"
-            )
+            logger.error(f"Error caching discounted products: {e}")
         return Response(serializer.data)
 
     @action(detail=False, methods=["get"], permission_classes=[IsAdminUser])
@@ -335,87 +280,24 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
         - profit_margin: productos ordenados por margen de ganancia.
         - combined: resumen combinado por categoría.
         """
-        from django.db import connection
-        from django.db.models import Sum, F, ExpressionWrapper, FloatField, Count, Avg
-        from django.db.models.functions import Coalesce
+        from store.services import ReportsService
 
         report_type = request.query_params.get("type", "sales_by_category")
         limit = int(request.query_params.get("limit", 10))
 
+        service = ReportsService()
+
         if report_type == "sales_by_category":
-            # Optimized query using JOINs and GROUP BY with proper indexes
-            query = """
-            SELECT 
-                c.name AS category,
-                SUM(oi.quantity) AS total_sold,
-                SUM(oi.quantity * oi.unit_price) AS total_revenue
-            FROM store_orderitem oi
-            JOIN store_product p ON oi.product_id = p.id
-            JOIN store_category c ON p.category_id = c.id
-            GROUP BY c.name
-            ORDER BY total_sold DESC
-            LIMIT %s
-            """
-            with connection.cursor() as cursor:
-                cursor.execute(query, [limit])
-                results = [
-                    {"category": row[0], "total_sold": row[1], "total_revenue": row[2]}
-                    for row in cursor.fetchall()
-                ]
+            results = service.get_sales_by_category(limit)
             return Response(results)
 
         elif report_type == "profit_margin":
-            # Using Django ORM with annotations for profit calculation
-            from .models import Product
-
-            products = Product.objects.annotate(
-                total_sold=Coalesce(
-                    Sum("orderitem__quantity", output_field=FloatField()), 0.0
-                ),
-                total_revenue=Coalesce(
-                    Sum(
-                        ExpressionWrapper(
-                            F("orderitem__quantity") * F("orderitem__unit_price"),
-                            output_field=FloatField(),
-                        )
-                    ),
-                    0.0,
-                ),
-                cost_price=ExpressionWrapper(
-                    F("price") * 0.7,  # Assuming 30% margin
-                    output_field=FloatField(),
-                ),
-                profit_margin=ExpressionWrapper(
-                    (F("price") - F("cost_price")) / F("price") * 100.0,
-                    output_field=FloatField(),
-                ),
-            ).order_by("-profit_margin")[:limit]
-
+            products = service.get_profit_margin(limit)
             serializer = self.get_serializer(products, many=True)
             return Response(serializer.data)
 
         elif report_type == "combined":
-            # Combined report showing category performance
-            from .models import Category
-
-            categories = Category.objects.annotate(
-                product_count=Count("products"),
-                total_sold=Coalesce(
-                    Sum("products__orderitem__quantity", output_field=FloatField()), 0.0
-                ),
-                avg_price=Avg("products__price", output_field=FloatField()),
-                total_revenue=Coalesce(
-                    Sum(
-                        ExpressionWrapper(
-                            F("products__orderitem__quantity")
-                            * F("products__orderitem__unit_price"),
-                            output_field=FloatField(),
-                        )
-                    ),
-                    0.0,
-                ),
-            ).order_by("-total_revenue")[:limit]
-
+            categories = service.get_combined(limit)
             serializer = CategorySerializer(categories, many=True)
             return Response(serializer.data)
 
