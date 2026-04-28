@@ -110,11 +110,11 @@ class CategoryViewSet(CachingMixin, AdminOrReadOnlyViewSet):
             )
         return Response(response.data)
 
-    def perform_create(self, serializer: BaseSerializer[Any]) -> None:
+    def perform_create(self, serializer: BaseSerializer[Category]) -> None:
         super().perform_create(serializer)
         self._invalidate_list_caches()
 
-    def perform_update(self, serializer: BaseSerializer[Any]) -> None:
+    def perform_update(self, serializer: BaseSerializer[Category]) -> None:
         super().perform_update(serializer)
         self._invalidate_list_caches()
 
@@ -194,13 +194,13 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
             )
         return Response(response.data)
 
-    def perform_create(self, serializer: BaseSerializer[Any]) -> None:
+    def perform_create(self, serializer: BaseSerializer[Product]) -> None:
         super().perform_create(serializer)
         self._invalidate_list_caches()
         cache.delete("product_featured")
         cache.delete("product_discounted")
 
-    def perform_update(self, serializer: BaseSerializer[Any]) -> None:
+    def perform_update(self, serializer: BaseSerializer[Product]) -> None:
         super().perform_update(serializer)
         self._invalidate_list_caches()
         cache.delete("product_featured")

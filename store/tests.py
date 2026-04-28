@@ -1,18 +1,16 @@
-from typing import Any, ClassVar
+from typing import ClassVar
 
-from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from store.models import Category, Order, OrderItem, Product
 
-User = get_user_model()
-
 
 class BaseAPITestCase(APITestCase):
-    admin_user: ClassVar[Any]
-    regular_user: ClassVar[Any]
+    admin_user: ClassVar[User]
+    regular_user: ClassVar[User]
     category1: ClassVar[Category]
     category2: ClassVar[Category]
     product1: ClassVar[Product]

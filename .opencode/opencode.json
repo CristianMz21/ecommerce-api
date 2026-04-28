@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "shell": "/bin/zsh",
+  "logLevel": "INFO",
+  "skills": {
+    "paths": [
+      ".agents/skills"
+    ]
+  },
+  "watcher": {
+    "ignore": [
+      "**/__pycache__/**",
+      "**/.ruff_cache/**",
+      "**/.mypy_cache/**",
+      "**/.pytest_cache/**",
+      "**/migrations/**",
+      "**/node_modules/**"
+    ]
+  },
+  "snapshot": true,
+  "autoupdate": true
+}
