@@ -1,47 +1,51 @@
 # E-commerce REST API
 
-Production-grade e-commerce backend built with **Django 5.2** and **Django REST Framework 3.16**. Implements role-based access control, Redis-backed caching, optimized database indexes, and custom analytics endpoints.
+Production-grade e-commerce backend built with **Django 6.0.4** and **Django REST Framework 3.17.1**. Implements role-based access control, Redis-backed caching, optimized database indexes, and custom analytics endpoints.
 
-[![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Django](https://img.shields.io/badge/Django-5.2-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
-[![DRF](https://img.shields.io/badge/DRF-3.16-A30000?logo=django&logoColor=white)](https://www.django-rest-framework.org/)
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-6.0-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![DRF](https://img.shields.io/badge/DRF-3.17-A30000?logo=django&logoColor=white)](https://www.django-rest-framework.org/)
 [![Redis](https://img.shields.io/badge/Redis-cache-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![Tests](https://img.shields.io/badge/tests-672_lines-success)](store/tests.py)
+[![Mypy](https://img.shields.io/badge/mypy-strict-0%20errors-2E7D32?logo=mypy&logoColor=white)](https://mypy.readthedocs.io/)
+[![Tests](https://img.shields.io/badge/tests-28%20%2F%2028%20%F0%9F%9F%A8-success)](store/tests.py)
 [![Portfolio](https://img.shields.io/badge/Portfolio-cristianarellano.com-f97316)](https://cristianarellano.com)
 
 ---
 
 ## Highlights
 
+- **Type-safe** — Full mypy strict mode coverage with zero suppressions
 - **Caching strategy** — Per-resource Redis cache with smart invalidation on writes (`CachingMixin`)
 - **RBAC** — Anonymous + regular users get read-only; admins get full CRUD
 - **Performance** — Composite database indexes on hot query paths (name+category, price+is_active, etc.)
 - **Filtering** — `django-filter` integrated for query-param filtering across all endpoints
 - **Analytics** — Custom admin-only `/reports/` endpoint aggregating sales, top products, and inventory metrics
-- **Test coverage** — 672 lines across caching, permissions, CRUD, filtering edge cases
 
 ## Tech stack
 
 | Layer | Tools |
 |---|---|
-| **Runtime** | Python 3.13 |
-| **Framework** | Django 5.2 LTS, Django REST Framework 3.16 |
-| **Cache** | Redis via `django-redis` |
-| **Filtering** | `django-filter` 25.1 |
+| **Runtime** | Python 3.14 |
+| **Framework** | Django 6.0.4, Django REST Framework 3.17.1 |
+| **Cache** | Redis via `django-redis` 6.0.0 |
+| **Filtering** | `django-filter` 25.2 |
 | **Database** | SQLite (dev) — drop-in PostgreSQL ready |
 | **Tests** | Django `APITestCase` |
+| **Type checking** | mypy 1.20.2 strict mode |
 
 ## Architecture
 
 ```
 ecommerce_api/          # Project config (settings, root URLs, WSGI/ASGI)
+├── settings.py         # Environment-based settings
 └── store/              # Domain app
     ├── models.py       # Category, Product, Order, OrderItem
     ├── serializers.py  # DRF serializers (per-action variants)
+    ├── services.py    # Business logic layer (ReportsService)
     ├── views.py        # ViewSets + CachingMixin + custom actions
     ├── urls.py         # DRF DefaultRouter
     ├── admin.py        # Django admin registration
-    └── tests.py        # API integration tests
+    └── tests.py        # API integration tests (28 tests)
 ```
 
 ### Caching pattern
@@ -49,14 +53,16 @@ ecommerce_api/          # Project config (settings, root URLs, WSGI/ASGI)
 The `CachingMixin` (in `store/views.py`) wraps all read operations with Redis-backed caching:
 
 ```python
-def list(self, request):
+def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
     cache_key = self.get_cache_key_list(request)
+    if cache_key is None:
+        return super().list(request, *args, **kwargs)
     cached = cache.get(cache_key)
     if cached:
         return Response(cached)
-    response = super().list(request)
+    response = super().list(request, *args, **kwargs)
     cache.set(cache_key, response.data, timeout=CACHE_TTL)
-    return response
+    return Response(response.data)
 ```
 
 Writes (`POST/PATCH/DELETE`) invalidate related caches via `_invalidate_related_caches()`, ensuring consistency without stale reads.
@@ -64,11 +70,11 @@ Writes (`POST/PATCH/DELETE`) invalidate related caches via `_invalidate_related_
 ### Permissions
 
 ```python
-class AdminOrReadOnlyViewSet(viewsets.ModelViewSet):
-    def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'featured', 'discounted'):
-            return [AllowAny()]
-        return [IsAdminUser()]
+class AdminOrReadOnlyViewSet(viewsets.ModelViewSet[Any]):
+    def get_permissions(self) -> list[BasePermission]:
+        if self.action in ("create", "update", "destroy", "partial_update"):
+            return [IsAdminUser()]
+        return super().get_permissions()
 ```
 
 This means anyone can browse the catalog, but only authenticated admins can mutate it or access analytics.
@@ -79,8 +85,8 @@ This means anyone can browse the catalog, but only authenticated admins can muta
 git clone https://github.com/CristianMz21/ecommerce-api.git
 cd ecommerce-api
 
-python -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
+uv venv .venv
+source .venv/bin/activate
 
 pip install -r requirements.txt
 python manage.py migrate
@@ -99,7 +105,9 @@ API is now live at `http://localhost:8000/api/`.
 | `GET` | `/api/categories/` | public | List all categories |
 | `GET` | `/api/categories/{id}/` | public | Retrieve category |
 | `POST` | `/api/categories/` | admin | Create category |
-| `GET` | `/api/products/` | public | List products (filters: `category`, `is_active`, `price__gte`, `price__lte`) |
+| `PATCH` | `/api/categories/{id}/` | admin | Update category |
+| `DELETE` | `/api/categories/{id}/` | admin | Delete category (if no products with OrderItems) |
+| `GET` | `/api/products/` | public | List products (filters: `category__slug`, `is_active`, `price__gte`, `price__lte`, `search`, `ordering`) |
 | `GET` | `/api/products/{id}/` | public | Retrieve product |
 | `GET` | `/api/products/featured/` | public | List featured products |
 | `GET` | `/api/products/discounted/` | public | List discounted products |
@@ -109,8 +117,18 @@ API is now live at `http://localhost:8000/api/`.
 ### Example query
 
 ```bash
-# All active products in category 3, priced 100k-500k COP
-curl 'http://localhost:8000/api/products/?category=3&is_active=true&price__gte=100000&price__lte=500000'
+# All active products in electronics category, priced 100-500
+curl 'http://localhost:8000/api/products/?category__slug=electronics&is_active=true&price__gte=100&price__lte=500'
+```
+
+## Quality gates
+
+All changes pass these checks before commit:
+
+```bash
+pre-commit run --all-files        # ruff format, ruff check, mypy, check yaml
+python manage.py test store       # 28 tests
+python scripts/check_suppressions.py --strict  # zero suppressions
 ```
 
 ## Testing
@@ -123,7 +141,8 @@ Coverage spans:
 - **Caching:** verifies cached responses, invalidation on writes, TTL behavior
 - **Permissions:** anonymous read-only, regular user read-only, admin full access
 - **CRUD:** all standard operations on all resources
-- **Filtering:** valid params, invalid params, edge cases
+- **Filtering & search:** valid params, invalid params, edge cases
+- **Reports:** sales by category, profit margin, combined metrics
 
 ## Roadmap
 
