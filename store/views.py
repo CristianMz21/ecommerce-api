@@ -13,7 +13,7 @@ from rest_framework.permissions import (
 )
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.serializers import Serializer
+from rest_framework.serializers import BaseSerializer, Serializer
 
 from store.models import Category, Product
 from store.serializers import (
@@ -110,11 +110,11 @@ class CategoryViewSet(CachingMixin, AdminOrReadOnlyViewSet):
             )
         return Response(response.data)
 
-    def perform_create(self, serializer: Any) -> None:
+    def perform_create(self, serializer: BaseSerializer[Any]) -> None:
         super().perform_create(serializer)
         self._invalidate_list_caches()
 
-    def perform_update(self, serializer: Any) -> None:
+    def perform_update(self, serializer: BaseSerializer[Any]) -> None:
         super().perform_update(serializer)
         self._invalidate_list_caches()
 
@@ -194,13 +194,13 @@ class ProductViewSet(CachingMixin, AdminOrReadOnlyViewSet):
             )
         return Response(response.data)
 
-    def perform_create(self, serializer: Any) -> None:
+    def perform_create(self, serializer: BaseSerializer[Any]) -> None:
         super().perform_create(serializer)
         self._invalidate_list_caches()
         cache.delete("product_featured")
         cache.delete("product_discounted")
 
-    def perform_update(self, serializer: Any) -> None:
+    def perform_update(self, serializer: BaseSerializer[Any]) -> None:
         super().perform_update(serializer)
         self._invalidate_list_caches()
         cache.delete("product_featured")
